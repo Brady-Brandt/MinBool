@@ -368,8 +368,13 @@ def get_truth_table(number_of_vars: int, minterms: list[int], dc: list[int] = []
     binary_numbers = terms_to_bin_str([x for x in range(max_num + 1)], number_of_vars)
 
     max_num_len = len(str(max_num)) 
+
+    num_spaces = 1 
+    if max_num_len - 3 > 0: 
+        num_spaces = max_num_len - 3
+
    
-    print("Dec", " " * (max_num_len - (3 - max_num_len)), "| ", sep = "", end="")
+    print("Dec", " " * num_spaces, "| ", sep = "", end="")
     # print the input variables
     for i in range(65, 65 + number_of_vars):
         print(chr(i), end=" ")
@@ -377,9 +382,14 @@ def get_truth_table(number_of_vars: int, minterms: list[int], dc: list[int] = []
     print(" O/P")
     print("-" * (number_of_vars * 2 + 10 + max_num_len))
 
+    padding = " "
+
+    if max_num_len < 3: 
+        padding = (3-max_num_len) * padding
+
     for i in range(max_num):
         fmt_str = "#0" + str(max_num_len) + "d"
-        print(format(i, fmt_str), " " * max_num_len,  sep="", end="| ")
+        print(format(i, fmt_str),padding,  sep="", end="| ")
         for bit in binary_numbers[i]:
             print(bit, end=" ")
 
