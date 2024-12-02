@@ -369,9 +369,11 @@ def get_truth_table(number_of_vars: int, minterms: list[int], dc: list[int] = []
 
     max_num_len = len(str(max_num)) 
 
-    num_spaces = 1 
+    num_spaces = 0 
     if max_num_len - 3 > 0: 
         num_spaces = max_num_len - 3
+    else: 
+        num_spaces = 1
 
    
     print("Dec", " " * num_spaces, "| ", sep = "", end="")
@@ -385,7 +387,7 @@ def get_truth_table(number_of_vars: int, minterms: list[int], dc: list[int] = []
     padding = " "
 
     if max_num_len < 3: 
-        padding = (3-max_num_len) * padding
+        padding = (3-max_num_len+1) * padding
 
     for i in range(max_num):
         fmt_str = "#0" + str(max_num_len) + "d"
