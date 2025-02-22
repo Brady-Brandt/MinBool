@@ -1,3 +1,4 @@
+import math
 # kind of arbitarty right now 
 # more testing need to be done 
 # this may be even too much for this implementation 
@@ -263,7 +264,7 @@ def simplify_sop(sop: list[str]):
 
 
 
-def p_implicant_to_bool_expr(p_implicant: str):
+def p_implicant_to_bool_expr(p_implicant: str, is_fsm=False):
     res = ""
     num_terms = 0
     for index, bit in enumerate(p_implicant): 
@@ -271,6 +272,9 @@ def p_implicant_to_bool_expr(p_implicant: str):
             continue
         # convert each value to an uppercase letter
         char = chr(65 + index)
+        if is_fsm and index == len(p_implicant) - 1:
+            char = "X"
+
         if bit == "0":
             res += char + "'"
         else:
@@ -281,7 +285,7 @@ def p_implicant_to_bool_expr(p_implicant: str):
 
 
 
-def get_minimal_expr(sop: list[str], implicant_chart: dict[str, str]):
+def get_minimal_expr(sop: list[str], implicant_chart: dict[str, str], is_fsm=False):
     fewest_terms = []
     smallest_len = len(sop[0])
 
@@ -317,7 +321,7 @@ def get_minimal_expr(sop: list[str], implicant_chart: dict[str, str]):
             # each term is Xindex into the prime implicant list 
             key = int(term[1:])
             p_implicant = keys[key]
-            (b_expr, term_size) = p_implicant_to_bool_expr(p_implicant)
+            (b_expr, term_size) = p_implicant_to_bool_expr(p_implicant, is_fsm)
             expr.append(b_expr)
             current_term_size += term_size
         
@@ -329,7 +333,7 @@ def get_minimal_expr(sop: list[str], implicant_chart: dict[str, str]):
     return smallest_expr
        
 
-def get_expr(number_of_vars: int, minterms: list[int], dc: list[int] = []):
+def get_expr(number_of_vars: int, minterms: list[int], dc: list[int] = [], is_fsm=False):
     if number_of_vars > MAX_FUNCTION_VARS:
         print(f"Cannot have functions with more than ${MAX_FUNCTION_VARS}")
         return
@@ -347,7 +351,7 @@ def get_expr(number_of_vars: int, minterms: list[int], dc: list[int] = []):
 
     sop = simplify_sop(to_sop(pos)) 
 
-    mininum = get_minimal_expr(sop, chart)
+    mininum = get_minimal_expr(sop, chart, is_fsm)
 
     expr = ""
     for product in mininum:
@@ -402,4 +406,178 @@ def get_truth_table(number_of_vars: int, minterms: list[int], dc: list[int] = []
             output = "X"
 
         print("| ", output, sep="")
+
+
+class FiniteStateMachine:
+    def __init__(self, is_mealy=False):
+        self.is_mealy = is_mealy
+        self.states = None
+        self.largest_state = 0
+        self.next_pow_2 = 0 # next power of two after the largest state
+        self.largest_minterm_length = 0 # bit length of the largest minterm
+
+   
+    def add_state_table(self, states: dict[int,list[str]]):
+        self.states = states
+
+    def get_num_flip_flops(self):
+        if self.states is None:
+            return 0
+        
+        max = 0 
+        for state in self.states.keys():
+            if state > max:
+                max = state
+
+
+        self.largest_state = max 
+        self.next_pow_2 = 2**(math.ceil(math.log2(max + 1)))
+        self.largest_minterm_length = math.ceil(math.log2(self.next_pow_2 << 1))
+
+        return int(math.log2(max)) + 1
+
+
+    class __Terms:
+        def __init__(self) -> None:
+           self.minterms = []
+           self.dont_care = []
+
+
+        def add_minterm(self, term: int):
+            self.minterms.append(term)
+
+
+        def add_dont_care(self, dc: int):
+            self.dont_care.append(dc)
+
+        def get_terms(self):
+            return (self.minterms, self.dont_care)
+
+
+
+
+
+    # convert the state table to a list of minterms and don't cares
+    def __get_minterms(self, num_flip_flops):
+        if self.states is None:
+            return None
+
+        next_states_minterms = []
+
+        largest_minterm = (self.largest_state << 1) + 1
+        print("Largest Minterm", largest_minterm)
+        for i in range(num_flip_flops):
+            # create the next state terms objects
+            next_states_minterms.append(FiniteStateMachine.__Terms())
+
+            # add don't cares if there are any
+            for dc in range(largest_minterm + 1, 2**self.largest_minterm_length):
+                next_states_minterms[i].add_dont_care(dc)
+
+
+
+        output = FiniteStateMachine.__Terms()
+
+        if self.is_mealy:
+            for dc in range(largest_minterm + 1, 2**self.largest_minterm_length):
+                output.add_dont_care(dc)
+        else:
+            for dc in range(self.largest_state + 1, self.next_pow_2):
+                output.add_dont_care(dc)
+
+
+
+        for current_state in self.states.keys():
+
+            # next state for x = 0 and x = 1
+            x_0 = self.states[current_state][0]
+            x_1 = self.states[current_state][1]
+
+            # two min terms for each state
+            min_a = current_state << 1
+            min_b = (current_state << 1) + 1
+
+
+            if x_0 == 'x':
+                for i in range(num_flip_flops):
+                    next_states_minterms[i].add_dont_care(min_a)
+            else:
+                # convert the next state to binary 
+                # loop the binary number and add the minterm to the list if its a one
+                temp= terms_to_bin_str([int(x_0)], num_flip_flops)
+                x_0_bin_str = temp[0]
+                for i in range(num_flip_flops):
+                    if x_0_bin_str[i] == '1':
+                        next_states_minterms[i].add_minterm(min_a) 
+
+            if x_1 == 'x':
+                for i in range(num_flip_flops):
+                    next_states_minterms[i].add_dont_care(min_b)
+            else:
+                temp= terms_to_bin_str([int(x_1)], num_flip_flops)
+                x_1_bin_str = temp[0]
+                for i in range(num_flip_flops):
+                    if x_1_bin_str[i] == '1':
+                        next_states_minterms[i].add_minterm(min_b)
+            
+
+
+
+            # for a moore machine, the output is not dependent on x 
+            # so the min terms will be 2 times smaller for the output
+            temp_min_a = min_a
+            if not self.is_mealy:
+                temp_min_a >>= 1
+           
+            
+            z_0 = self.states[current_state][2]
+            if z_0 == '1':
+                output.add_minterm(temp_min_a)
+            elif z_0 != '0':
+                output.add_dont_care(temp_min_a)
+
+            if self.is_mealy:
+                z_1 = self.states[current_state][3]
+                if z_1 == '1':
+                    output.add_minterm(min_b)
+                elif z_1 != '0':
+                    output.add_dont_care(min_b)
+            
+            
+        return (next_states_minterms, output)
+
+
+
+
+    def get_boolean_expressions(self):
+        num_flip_flops = self.get_num_flip_flops()
+        num_vars= self.largest_minterm_length
+
+
+        temp = self.__get_minterms(num_flip_flops)
+        if temp is None:
+            return
+
+        (next_states_minterms, output) = temp
+
+
+        for i in range(len(next_states_minterms)):
+            (mterms, dont_care) = next_states_minterms[i].get_terms()
+            flip_flop_var = chr(65 + i) + "+"
+
+            expr = get_expr(num_vars, mterms, dont_care, is_fsm=True)
+            print(flip_flop_var, expr, sep=" = ")
+
+
+
+        (z_minterms, z_dc)= output.get_terms()
+        z_expr = "" 
+        if self.is_mealy:
+            z_expr = get_expr(num_vars, z_minterms, z_dc, is_fsm=True) 
+        else:
+            z_expr = get_expr(num_vars - 1, z_minterms, z_dc, is_fsm=True)
+ 
+        print("Z = ", z_expr)
+
+
 
