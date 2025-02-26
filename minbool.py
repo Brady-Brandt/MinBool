@@ -1,4 +1,5 @@
 import math
+
 # kind of arbitarty right now 
 # more testing need to be done 
 # this may be even too much for this implementation 
@@ -420,6 +421,24 @@ class FiniteStateMachine:
     def add_state_table(self, states: dict[int,list[str]]):
         self.states = states
 
+
+    def print_state_table(self):
+        if self.states == None:
+            print(None)
+            return
+
+        for state in self.states.keys(): 
+            arr = self.states[state]
+            print('S' + str(state), end="    ")
+            print('S' + str(arr[0]),  'S' + str(arr[1]),sep="    ", end="    ")
+
+
+            if self.is_mealy:
+                print(arr[2], arr[3], sep="    ")
+            else:
+                print(arr[2])
+
+
     def get_num_flip_flops(self):
         if self.states is None:
             return 0
@@ -465,7 +484,6 @@ class FiniteStateMachine:
         next_states_minterms = []
 
         largest_minterm = (self.largest_state << 1) + 1
-        print("Largest Minterm", largest_minterm)
         for i in range(num_flip_flops):
             # create the next state terms objects
             next_states_minterms.append(FiniteStateMachine.__Terms())
@@ -581,3 +599,101 @@ class FiniteStateMachine:
 
 
 
+class SequenceDetector(FiniteStateMachine):
+
+    # checks to see which state the fsm should go to if the input is not the next bit in the sequence
+    def __find_sub_sequence(self, other_seq: str, each_state_sequences: list[str]):
+        while len(other_seq) > 0:
+            for state,state_seq in enumerate(each_state_sequences):
+                if state_seq == other_seq:
+                    return str(state)
+
+            other_seq = other_seq[1:]
+
+        # if no sub sequence was found 
+        # we go back to reset
+        return '0'
+
+
+    def __init__(self, sequence: str, allow_overlap=True, is_mealy=False):
+        super().__init__(is_mealy)
+
+
+        #verify the string only contains ones and zeros
+        for c in sequence:
+            if c != '1' and c != '0':
+                raise ValueError("Sequence Must be in Binary")
+
+
+        state_table: dict[int, list[str]] = {}
+
+ 
+        # for the first pass through we only care about advancing to the next sequence 
+        # we use n as a placeholder
+        for cs,bit in enumerate(sequence):
+            temp = ['N', 'N', '0', '0']
+            temp[int(bit)] = str(cs + 1)
+
+            if cs == len(sequence) - 1 and is_mealy:
+                temp[int(bit)+ 2] = '1'
+                temp[int(bit)] = 'N'
+
+            if is_mealy:
+                state_table[cs] = temp
+            else:
+                state_table[cs] = temp[:-1]
+
+
+        if not is_mealy:
+            state_table[len(sequence)] = ['N', 'N', '1']
+
+        # holds the sequence for each state 
+        # index 0 is reset so there is no sequence
+        each_state_sequences = [""]
+
+        for state in state_table.keys():
+            temp = state_table[state]
+            n_index = 0
+            if temp[1] == 'N':
+                n_index = 1
+
+            # stay at reset if we don't advance
+            if state == 0:
+                temp[n_index] = '0'
+                continue
+
+
+            current_seq = sequence[:state]
+            each_state_sequences.append(current_seq)
+
+            if not allow_overlap:
+                # go back to reset on a moore machine if you don't allow overlap 
+                # this 
+                if not is_mealy:
+                    temp[0] = '0'
+                    temp[1] = '0'
+                    break
+
+                not_n_index = int(not n_index)
+                # mealy machine only the input that detects 
+                # the sequence goes back to reset
+                if temp[n_index + 2] == '1':
+                    temp[n_index] = '0'
+                    non_advancing_seq = current_seq + str( not_n_index)
+                    temp[not_n_index] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
+                else:
+                    temp[not_n_index] = '0'
+                    non_advancing_seq = current_seq + str( n_index)
+                    temp[n_index] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
+
+
+            non_advancing_seq = current_seq + str(n_index)
+            temp[n_index] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
+
+            if state == len(state_table) - 1:
+                n_index =  int(not n_index)
+                non_advancing_seq = current_seq + str(n_index)
+                temp[n_index] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
+
+
+        self.add_state_table(state_table)
