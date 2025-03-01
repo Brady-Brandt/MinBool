@@ -1,9 +1,8 @@
 import math
 
-# kind of arbitarty right now 
-# more testing need to be done 
-# this may be even too much for this implementation 
-MAX_FUNCTION_VARS = 16
+# takes around 90 seconds for 1023 minterms
+# takes around 10 minutes for 2047 minterms or 11 vars 
+MAX_FUNCTION_VARS = 10 
 
 # converts the terms to binary strings of size corresponding to number of variables
 def terms_to_bin_str(terms: list[int], number_of_vars: int):
@@ -17,14 +16,14 @@ def terms_to_bin_str(terms: list[int], number_of_vars: int):
 
 
 #https://en.wikipedia.org/wiki/Quine%E2%80%93McCluskey_algorithm
-def check_dash_align(min1: str, min2: str):
+def __check_dash_align(min1: str, min2: str):
     for i in range(len(min1)): 
         #If one minterm has dashes and the other does not then the minterms cannot be merged. 
         if min1[i] != '-' and min2[i] == '-': 
             return False 
     return True
 
-def check_minterm_diff(min1, min2):
+def __check_minterm_diff(min1, min2):
     #minterm1 and minterm2 are strings representing all of the currently found prime implicants and merged 
     #minterms. Examples include '01--' and '10-0'
     #integer representation of minterm1 and minterm2 with the dashes removed, these are replaced with 0
@@ -48,7 +47,7 @@ def check_minterm_diff(min1, min2):
     res =  m1 ^ m2
     return res != 0 and (res & res - 1) == 0
 
-def merge_minterms(min1: str, min2: str):
+def __merge_minterms(min1: str, min2: str):
     mergedMinterm = ""
     for i in range(len(min1)): 
         #If the bits vary then replace it with a dash, otherwise the bit remains in the merged minterm.
@@ -70,8 +69,8 @@ def prime_implicants(minterms: list[str]):
         for j in range(i+1,len(minterms)):
             minterm1 = minterms[i]
             minterm2 = minterms[j]
-            if check_dash_align(minterm1, minterm2) and check_minterm_diff(minterm1, minterm2):
-                mergedMinterm = merge_minterms(minterm1, minterm2) 
+            if __check_dash_align(minterm1, minterm2) and __check_minterm_diff(minterm1, minterm2):
+                mergedMinterm = __merge_minterms(minterm1, minterm2) 
                 if mergedMinterm not in p_implicants:
                     p_implicants.append(mergedMinterm)
                 num_merges += 1
@@ -91,7 +90,7 @@ def prime_implicants(minterms: list[str]):
         return prime_implicants(p_implicants)
 
 
-def match_str(p_implicant: str, minterm: str):
+def __match_str(p_implicant: str, minterm: str):
     for i in range(len(p_implicant)):
         if p_implicant[i] == '-' and not minterm[i].isdigit():
             return False
@@ -112,7 +111,7 @@ def create_prime_implicant_chart(p_implicants: list[str], minterms: list[str]):
         #Convert the "-" to "\d" which can be used to find the row of ticks above.
         for j in range(len(minterms)):
             #If there is a match between the regular expression and the minterm than append a 1 otherwise 0. 
-            if match_str(p_implicant,minterms[j]):
+            if __match_str(p_implicant,minterms[j]):
                 p_implicant_chart[p_implicant] += "1"
             else: 
                 p_implicant_chart[p_implicant] += "0"
@@ -120,152 +119,106 @@ def create_prime_implicant_chart(p_implicants: list[str], minterms: list[str]):
     #The prime implicant chart is complete so return the completed chart. 
     return p_implicant_chart
 
+
+
 # https://en.wikipedia.org/wiki/Petrick%27s_method
-def to_pos(implicant_chart: dict[str, str]):
-    pos:dict[int, str] = {}
-    for implicant_index,(key,value) in enumerate(implicant_chart.items()):
+# pos is represented as set of tuples 
+# where each term in the tuple represents a sum
+# each tuple is a product
+def __to_pos(implicant_chart: dict[str, str]) -> set[tuple[int]]:
+    temp_pos = {}
+    for implicant_index,(_,value) in enumerate(implicant_chart.items()):
         for col, bit in enumerate(value):
-            item = "X" + str(implicant_index)
+            # ensure all our numbers are multiples of 2
+            temp_item = 2**implicant_index
+
             if bit == '1':
                 try:
-                    pos[col] += item + " + "
+                    temp_pos[col].append(temp_item)
                 except KeyError:
-                    pos[col] = item + " + "
+                    temp_pos[col] = [temp_item]
 
-    #removing trailing space + space
-    # convert it to a list 
-    res = []
-    for key, value in pos.items():
-        res.append(value[:-3])
-    return res
+    pos_res = set()
+    for _, sum in temp_pos.items():
+        pos_res.add(tuple(sum))
 
-# apply absorption law 
-# X + XY = X
-def absorption(sop: list[str]):
-    i = 0
-    j = 1
-    moves = 0
-    while i < len(sop): 
-        while j < len(sop): 
-            x = sop[i].split("*")
-            y = sop[j].split("*")
-            can_absorb = True
+    return pos_res
 
-            # X + XY = X
-            for c in x:
-                if c not in y:
-                    can_absorb = False
 
-            if can_absorb:
-                # X + XY = X
-                # just remove the all sop[j] because it is equal to XY 
-                sop.remove(sop[j])
-                moves += 1
-                j += 1
-                continue
-           
-            can_absorb = True
-            # XY + X = X
-            for c in y:
-                if c not in x:
-                    can_absorb = False
+# convert tuple of ints to just ints 
+# where each int is a term in the sum
+def __to_sop(pos: set[tuple[int]]):
+    if len(pos) == 1:
+        res = []
+        # get the only sum in the set
+        sum = pos.pop()
+       
+        # loop through each term in the sum and add it to the result
+        for term in sum:
+            res.append(term)
+        return res
 
-            # XY + X = X
-            if can_absorb:
-                moves += 1
-                sop.remove(sop[i])
-                break
+    sop1: set[int] = set()
+    sop2: set[int] = set()
+   
+    # expand the first two products 
+    sum1 = pos.pop()
+    sum2 = pos.pop()
+
+    for i in range(len(sum1)):
+        for j in range(len(sum2)):
+            sop1.add(sum1[i] | sum2[j])
+
+    # expand each product
+    # since we are using sets we alternate 
+    # between two sets that store the current sop
+    # we expanding until all the pos terms have been used up
+    while len(pos) > 0:
+        temp_sum = pos.pop()
+        if len(sop1) == 0:
+            while(len(sop2) > 0):
+                val = sop2.pop()
+                for e in temp_sum:
+                    sop1.add(e | val)
+        else:
+            while(len(sop1) > 0):
+                val = sop1.pop()
+                for e in temp_sum:
+                    sop2.add(e | val)
+
+
+    sop = list(sop1)
+    if len(sop1) == 0:
+        sop = list(sop2)
+
+
+
+    # we handle absorption
+    i = 0 
+    j = 0
+    while i < len(sop):
+        j = i + 1
+        while j < len(sop):
+            # x ^ y = x, then y can be removed
+            x = sop[i]
+            y = sop[j]
+
+            if x ^ y == x:
+                sop.pop(j)
 
             j += 1
-
         i += 1
-        j = i + 1
-    
-    # if no absorptions were made we break 
-    if moves == 0:
-        return sop
-    else:
-        return absorption(sop)
-
-# recursive method that distributes 2 sums at a time (x + y)(w + z)
-# puts the distributed product into a new list 
-# everything is distributed once the list len = 1
-def to_sop(sop: list[str]):
-    if len(sop) == 1:
-        return sop
-
-    new_sop = []
-    index = 0
-
-    for i in range(0,len(sop) - 1, 2):
-        # convert to sets to remove duplicates because x + x = x 
-        # we also need to apply absoprtion to reduce the size of the lists 
-        # or else it takes exponetially longer
-        paren1 = list(set(sop[i].split(" + ")))
-        paren1 = list(set(absorption(paren1)))
-        paren2 = list(set(sop[i + 1].split(" + ")))
-        paren2 = list(set(absorption(paren2)))
-
-        new_sop.append("")
-        #distributing each value 
-        for val1 in paren1:
-            for val2 in paren2: 
-                #X * X = X
-                if val1 == val2: 
-                    new_sop[index] += val1 +  " + "
-                else:
-                    new_sop[index] += val1 + "*" + val2 + " + "
-        #remove trailing " + "
-        new_sop[index] = new_sop[index][:-3]
-        index += 1
-
-    # since we do 2 at a time if we have an odd number 
-    # we need to append it to our list
-    if len(sop) % 2 == 1:
-        new_sop.append(sop[-1])
-    return to_sop(new_sop)
 
 
+    # remove any remaing duplicates 
+    return list(set(sop))
 
-
-def simplify_sop(sop: list[str]):
-    # pos to sop puts everything in a list at the first index 
-    # split at the + to get each product
-    sop = sop[0].split(" + ")
-
-    #remove duplicates in the products  
-    # XYX = XY 
-    for index, product in enumerate(sop): 
-        temp = "".join(sorted(set(product.split("*")))) 
-        sop[index] = temp
-
-    sop = list(set(sop))
-
-    #format it better
-    #add * between terms
-    res = []
-    for prod in sop: 
-        new_prod = ""
-        for i in range(len(prod)):
-            new_prod += prod[i]
-            if i != len(prod) - 1 and prod[i + 1] == "X" and i != 0: 
-                new_prod += "*"
         
-        res.append(new_prod)
-
-    sop = res
-
-    absorption(sop)     
-
-    sop = list(set(sop))
-
-    return sop
 
 
 
 
-
-def p_implicant_to_bool_expr(p_implicant: str, is_fsm=False):
+def __p_implicant_to_bool_expr(p_implicant: str, is_fsm=False):
     res = ""
     num_terms = 0
     for index, bit in enumerate(p_implicant): 
@@ -286,16 +239,15 @@ def p_implicant_to_bool_expr(p_implicant: str, is_fsm=False):
 
 
 
-def get_minimal_expr(sop: list[str], implicant_chart: dict[str, str], is_fsm=False):
+def __get_minimal_expr(sop: list[int], implicant_chart: dict[str, str], is_fsm=False):
     fewest_terms = []
-    smallest_len = len(sop[0])
+    smallest_len = sum([1 for i in range(sop[0].bit_length()) if sop[0] & (1 << i)])
+
 
     # getting the product(s) with the fewest terms 
-    for product in sop: 
-        term_count = 0
-        for c in product: 
-            if c == "X":
-                term_count += 1
+    for product in sop:
+        # each term is represented by a one in binary so we count the number of 1's in the product
+        term_count= sum([1 for i in range(product.bit_length()) if product & (1 << i)])
         if term_count < smallest_len:
             fewest_terms = [product]
             smallest_len = term_count
@@ -303,7 +255,6 @@ def get_minimal_expr(sop: list[str], implicant_chart: dict[str, str], is_fsm=Fal
             fewest_terms.append(product)
 
    
-    # expand each product to see which one has the least amount of terms 
    
     # current the prime implicant keys to a list 
     keys = list(implicant_chart.keys())
@@ -314,17 +265,17 @@ def get_minimal_expr(sop: list[str], implicant_chart: dict[str, str], is_fsm=Fal
     # converting each item into a boolean expression and finding 
     # the smallest
     for product in fewest_terms: 
-        terms = product.split("*")
         current_term_size = 0
         expr = []
-        for term in terms:
-            # convert each term to its prime implicant 
-            # each term is Xindex into the prime implicant list 
-            key = int(term[1:])
-            p_implicant = keys[key]
-            (b_expr, term_size) = p_implicant_to_bool_expr(p_implicant, is_fsm)
-            expr.append(b_expr)
-            current_term_size += term_size
+        # loop through each bit in the product
+        for index in range(product.bit_length()):
+
+            # if the bit is a one
+            if product & (1 << index):
+                p_implicant = keys[index]
+                (b_expr, term_size) = __p_implicant_to_bool_expr(p_implicant, is_fsm)
+                expr.append(b_expr)
+                current_term_size += term_size
         
         if smallest_term_size == None or current_term_size < smallest_term_size:
             smallest_term_size = current_term_size 
@@ -339,20 +290,44 @@ def get_expr(number_of_vars: int, minterms: list[int], dc: list[int] = [], is_fs
         print(f"Cannot have functions with more than ${MAX_FUNCTION_VARS}")
         return
 
+
+    if len(minterms) == 0:
+        return "F = 0"
+
     terms = minterms + dc
+
+    max_minterm = 2**number_of_vars - 1
+
+    for term in terms:
+        if term > max_minterm or term < 0:
+            raise ValueError(f"Invalid Minterm: {term} max term for {number_of_vars} vars is {max_minterm}")
+
+
+    # remove any duplicates
+    terms = set(terms)
+
+    
+    if len(terms) == 2**number_of_vars:
+        return "F = 1"
+
+    terms = list(terms)
+
+
+
     bin_terms = terms_to_bin_str(terms, number_of_vars)
 
+    
     p_implicants = prime_implicants(bin_terms)
 
     # when creating the prime implicant chart we don't use the dont_care terms 
     # so we only care about the min terms 
     chart = create_prime_implicant_chart(p_implicants, bin_terms[:len(minterms)])
 
-    pos = to_pos(chart)
+    pos = __to_pos(chart)
 
-    sop = simplify_sop(to_sop(pos)) 
+    sop = __to_sop(pos)
 
-    mininum = get_minimal_expr(sop, chart, is_fsm)
+    mininum = __get_minimal_expr(sop, chart, is_fsm)
 
     expr = ""
     for product in mininum:
@@ -363,7 +338,6 @@ def get_expr(number_of_vars: int, minterms: list[int], dc: list[int] = [], is_fs
 
 
 def get_truth_table(number_of_vars: int, minterms: list[int], dc: list[int] = []):
-    # need to do some testing
     if number_of_vars > MAX_FUNCTION_VARS:
         print("Cannot handle functions greater than ", MAX_FUNCTION_VARS, sep="")
         return 
