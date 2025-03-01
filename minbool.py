@@ -640,25 +640,33 @@ class SequenceDetector(FiniteStateMachine):
             current_seq = sequence[:state]
             each_state_sequences.append(current_seq)
 
-            if not allow_overlap:
+            if not allow_overlap and state == len(state_table) - 1:
                 # go back to reset on a moore machine if you don't allow overlap 
-                # this 
                 if not is_mealy:
                     temp[0] = '0'
                     temp[1] = '0'
                     break
 
-                not_n_index = int(not n_index)
                 # mealy machine only the input that detects 
                 # the sequence goes back to reset
-                if temp[n_index + 2] == '1':
-                    temp[n_index] = '0'
-                    non_advancing_seq = current_seq + str( not_n_index)
-                    temp[not_n_index] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
+
+                # if the output at for x = 0 is a 1 
+                # seq is detected so we go back to reset for next state when x = 0
+                # check where to go when x = 1
+                if temp[2] == '1':
+                    temp[0] = '0'
+                    non_advancing_seq = current_seq + str( 1)
+                    temp[1] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
+
+                # output is 1 when x = 1 
+                # next state when x = 1 is then 0 
+                # check where to go when x = 0
                 else:
-                    temp[not_n_index] = '0'
-                    non_advancing_seq = current_seq + str( n_index)
-                    temp[n_index] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
+                    temp[1] = '0'
+                    non_advancing_seq = current_seq + str( 0)
+                    temp[0] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
+
+                break
 
 
             non_advancing_seq = current_seq + str(n_index)
@@ -668,6 +676,5 @@ class SequenceDetector(FiniteStateMachine):
                 n_index =  int(not n_index)
                 non_advancing_seq = current_seq + str(n_index)
                 temp[n_index] = self.__find_sub_sequence(non_advancing_seq, each_state_sequences)
-
-
+        
         self.add_state_table(state_table)
